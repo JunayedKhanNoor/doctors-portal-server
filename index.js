@@ -27,6 +27,32 @@ async function run(){
             const services = await cursor.toArray();
             res.send(services);
         })
+        // This is not proper way to query multiple collection  
+        // After learning more about mongodb, use aggregate, lookup, pipeline, match, group
+        app.get('/available', async(req, res)=>{
+            const date = req.query.date;
+            //Step 1: get services
+            const services = await servicesCollection.find().toArray();
+            //Step 2: get the booking of that day
+            const query = {date: date};
+            const bookings = await bookingCollection.find(query).toArray();
+            //Step 3: for each service, find bookings for that service
+            services.forEach(service=>{
+                //Step 4: find bookings for that service. output: [{},{},{}]
+                const serviceBookings = bookings.filter(b=> b.treatment === service.name);
+                //Step 5: select slots for the service Bookings: ['','','']
+                const booked = serviceBookings.map(s=>s.slot);
+                service.booked = booked;
+                //service.booked = serviceBookings.map(s=>s.slot);
+                //Step 6: select those slots that are not in bookedSlots
+                const available = service.slots.filter(s=> !booked.includes(s));
+                //service.available = available;
+                //Step 7: set available to slots to make it easier;
+                service.slots =available;
+            })
+
+            res.send(services);
+        })
         /**
          * API Naming convention
          * app.get('/booking') //get all booking in this collection
@@ -37,8 +63,13 @@ async function run(){
          */
         app.post('/booking', async(req,res)=>{
             const booking = req.body;
+            const query = {treatment: booking.treatment, date: booking.date, patient: booking.patient};
+            const exist = await bookingCollection.findOne(query);
+            if (exist) {
+                return res.send({success: false, booking: exist});
+            }
             const result = await bookingCollection.insertOne(booking);
-            res.send(result);
+            return res.send({success: true, result});
         })
     }
     finally{
